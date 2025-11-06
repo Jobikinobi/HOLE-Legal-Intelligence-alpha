@@ -1,28 +1,60 @@
 # When to Use Document Decomposition
 
-## Decision Tree
+## The Only Question That Matters
 
 ```
-Do you have a new PDF to process?
+Does this PDF contain multiple separate documents bundled together,
+or is it a single coherent document (even if multi-page)?
+
+├─> MULTIPLE documents bundled (mixed types, different cases, different dates)
+│   └─> USE DECOMPOSITION
+│       Example: PDF with police report + emails + SMS + unrelated incident
 │
-├─> Is this from a government FOIA/public records response?
-│   │
-│   ├─> YES
-│   │   │
-│   │   └─> Is it a multi-page dump (50+ pages)?
-│   │       │
-│   │       ├─> YES → USE DECOMPOSITION (high probability of mixed content)
-│   │       │
-│   │       └─> NO (< 50 pages) → QUICK CHECK FIRST
-│   │           │
-│   │           └─> Skim first 5 pages: Do you see mixed document types?
-│   │               │
-│   │               ├─> YES → USE DECOMPOSITION
-│   │               │
-│   │               └─> NO → Skip decomposition, use legal_track_document directly
-│   │
-│   └─> NO (normal legal document)
-│       └─> Skip decomposition, use legal_track_document directly
+└─> SINGLE coherent document (even if 100 pages)
+    └─> SKIP decomposition, use legal_track_document directly
+        Example: 100-page deposition transcript (one conversation)
+```
+
+## Simple Test: Skim First 10 Pages
+
+**Look for indicators of MULTIPLE bundled documents**:
+
+✅ **USE Decomposition** if you see:
+- Page 1: Police report header
+- Page 15: **Sudden change** to email format/headers
+- Page 25: **Different case number** appears
+- Page 30: **SMS screenshot** format
+- Page 40: **Completely different incident/date**
+
+✅ **SKIP Decomposition** if you see:
+- Continuous narrative (same topic throughout)
+- Single document type (all one police report, all one email thread)
+- Chronological flow (one story from start to finish)
+- Same case/incident throughout
+
+---
+
+## Decision Tree (Revised)
+
+```
+New PDF to process
+│
+└─> Quick skim (first 10 pages):
+    │
+    ├─> Do you see SUDDEN CHANGES in:
+    │   - Document type (report → email → photos)?
+    │   - Case number (CV-12345 → CV-67890)?
+    │   - Incident date (Aug 21 → Sept 15 → Oct 3)?
+    │   - Topic (stalking complaint → traffic stop)?
+    │   - Format (typed text → SMS screenshot → photo)?
+    │
+    ├─> YES (sudden changes) → MULTIPLE DOCUMENTS BUNDLED
+    │   └─> USE: legal_decompose_document
+    │       └─> Let Claude detect boundaries and split
+    │
+    └─> NO (continuous, coherent) → SINGLE DOCUMENT
+        └─> SKIP decomposition
+        └─> USE: legal_track_document directly
 ```
 
 ---
