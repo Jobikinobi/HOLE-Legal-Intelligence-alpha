@@ -22,19 +22,23 @@ import { splitPDFToR2 } from '../utils/pdf-splitter';
 export const DecomposeDocumentSchema = z.object({
 	filePath: z.string()
 		.min(1)
-		.describe('Path to chaotic multi-document PDF from public records request'),
+		.describe('Path to multi-document PDF from public records request'),
 
 	sourceDescription: z.string()
 		.optional()
 		.describe('Description of source (e.g., "El Paso PD FOIA response batch 3"). Helps Claude understand context.'),
 
+	detectOnly: z.boolean()
+		.default(false)
+		.describe('RECOMMENDED FIRST STEP: Set true to detect boundaries WITHOUT splitting. Review detected boundaries, then run again with detectOnly=false to split if boundaries look correct.'),
+
 	autoSplit: z.boolean()
-		.default(true)
-		.describe('Automatically split PDF into separate files after detecting boundaries. Set false to just detect boundaries without splitting.'),
+		.default(false)
+		.describe('Automatically split PDF after detecting boundaries. ONLY set true after reviewing boundaries with detectOnly=true first.'),
 
 	autoTrack: z.boolean()
 		.default(false)
-		.describe('Automatically track each split document after decomposition. WARNING: This will process all split documents immediately (may take time for large batches).'),
+		.describe('Automatically track each split document after splitting. WARNING: Processes all split documents immediately (may take time for large batches).'),
 
 	outputPrefix: z.string()
 		.optional()
