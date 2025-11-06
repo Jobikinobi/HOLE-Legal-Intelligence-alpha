@@ -1,0 +1,30 @@
+name = "legal-intelligence-alpha"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Neon PostgreSQL via Hyperdrive (connection pooling)
+# Configure after creating Hyperdrive config
+# [[hyperdrive]]
+# binding = "NEON"
+# id = "your-hyperdrive-id"
+
+# R2 bucket for PDF storage
+# [[r2_buckets]]
+# binding = "DOCUMENTS_R2"
+# bucket_name = "legal-documents"
+
+# KV for caching query results
+# [[kv_namespaces]]
+# binding = "CACHE_KV"
+# id = "your-kv-namespace-id"
+
+[vars]
+PROJECT_DEFAULT = "alt"
+UNSTRUCTURED_STRATEGY = "hi_res"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# NEON_DATABASE_URL
+# PINECONE_API_KEY
+# OPENAI_API_KEY
+# ANTHROPIC_API_KEY
+# UNSTRUCTURED_API_KEY

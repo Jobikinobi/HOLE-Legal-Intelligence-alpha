@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+.wrangler/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Secrets (managed by SecretSpec)
+.secrets/
+
+# Logs
+*.log
+npm-debug.log*
+wrangler.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

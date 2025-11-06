@@ -1,0 +1,34 @@
+{
+  "name": "HOLE-Legal-Intelligence-alpha",
+  "version": "1.0.0",
+  "description": "AI-Powered Legal Document Intelligence System with MCP integration",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "test": "vitest",
+    "check-secrets": "secretspec check",
+    "db:migrate": "psql $NEON_DATABASE_URL -f migrations/001_multi_tenant_schema.sql"
+  },
+  "keywords": ["legal", "mcp", "ai", "document-intelligence"],
+  "author": "HOLE Foundation",
+  "license": "PRIVATE",
+  "packageManager": "pnpm@10.20.0",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251014.0",
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.7",
+    "wrangler": "^4.45.4"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "@pinecone-database/pinecone": "^6.1.3",
+    "openai": "^6.8.1",
+    "unstructured-client": "^0.29.0",
+    "zod": "^4.1.12"
+  }
+}
