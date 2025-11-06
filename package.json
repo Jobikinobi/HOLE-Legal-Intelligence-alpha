@@ -12,7 +12,12 @@
     "check-secrets": "secretspec check",
     "db:migrate": "psql $NEON_DATABASE_URL -f migrations/001_multi_tenant_schema.sql"
   },
-  "keywords": ["legal", "mcp", "ai", "document-intelligence"],
+  "keywords": [
+    "legal",
+    "mcp",
+    "ai",
+    "document-intelligence"
+  ],
   "author": "HOLE Foundation",
   "license": "PRIVATE",
   "packageManager": "pnpm@10.20.0",
@@ -28,6 +33,7 @@
     "@modelcontextprotocol/sdk": "^1.21.0",
     "@pinecone-database/pinecone": "^6.1.3",
     "openai": "^6.8.1",
+    "pdf-lib": "^1.17.1",
     "unstructured-client": "^0.29.0",
     "zod": "^4.1.12"
   }

@@ -11,23 +11,55 @@ This system provides comprehensive legal document intelligence with:
 - **AI-assisted motion drafting** with templates
 - **Cloudflare Workers deployment** (unlimited timeout, global edge)
 
-## The Problem This Solves
+## The Problems This Solves
+
+### Problem 1: Azure DI Doesn't Extract Queryable Metadata
 
 **Azure Document Intelligence alone** extracts text but doesn't structure it as queryable metadata.
 
-**This system**:
-1. Unstructured.io → Extracts document structure
-2. Claude API → Extracts legal metadata (court, actors, concepts, citations)
-3. Neon PostgreSQL → Stores queryable metadata
-4. Pinecone → Stores vector embeddings
-5. **Result**: Hybrid queries like "emails between Maria dos Santos and Shawn Cowie in Sept 2025 mentioning coordination"
+**Impact**: Can only full-text search. Can't filter by court, actors, legal concepts.
+
+### Problem 2: Government Records Are Chaotic Multi-Document PDFs ⚠️ CRITICAL
+
+**Reality of public records requests**:
+- Single PDF contains MULTIPLE unrelated documents
+- Mixed types: Police reports + emails + SMS + photos all in one file
+- Different incidents/cases bundled together
+- Deliberately or carelessly disorganized
+
+**Example**: `elpaso_pd_response.pdf` (50 pages) contains:
+- Pages 1-15: Police Report (Incident A)
+- Pages 16-23: Email chain
+- Pages 24-28: SMS screenshots
+- Pages 29-45: Unrelated incident report (Incident B)
+- Pages 46-50: Photos
+
+**Standard systems assume**: 1 PDF = 1 document (WRONG!)
+
+**This system handles chaotic PDFs** with document decomposition preprocessing.
 
 ---
 
 ## Architecture
 
+### Stage 0: Document Decomposition (PUBLIC RECORDS PDFs) ⭐ NEW
+
 ```
-PDF Document
+Chaotic Multi-Document PDF (government FOIA response)
+   │
+   ├─> Unstructured.io (extract ALL elements with page numbers)
+   │
+   ├─> Claude API (detect document boundaries)
+   │   └─> Identifies: Pages 1-15 = Police Report, Pages 16-23 = Email Chain, etc.
+   │
+   └─> PDF Splitting (pdf-lib)
+       └─> Creates discrete PDFs: report.pdf, email.pdf, sms.pdf, etc.
+```
+
+### Stage 1-3: Standard Processing (Discrete Documents)
+
+```
+Discrete PDF Document
    │
    ├─> Unstructured.io (extracts structure)
    │   └─> Elements: [Title, Header, NarrativeText, Table...]
