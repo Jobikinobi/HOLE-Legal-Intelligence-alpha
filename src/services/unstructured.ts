@@ -63,7 +63,7 @@ export async function processLegalDocument(
 					fileName: fileName
 				},
 				strategy: config.strategy || Strategy.HiRes,
-				languages: ['eng'],
+				languages: ['eng', 'spa'],  // ⭐ English + Spanish support
 				extractImageBlockTypes: ['Image', 'Table'],
 				pdfInferTableStructure: true,
 				splitPdfConcurrency: 3,

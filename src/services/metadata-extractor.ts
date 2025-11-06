@@ -27,10 +27,11 @@ export interface LegalMetadata {
 	// Core document metadata
 	title: string;
 	document_type: 'motion' | 'case-law' | 'evidence' | 'email' | 'police-report' | 'court-order' | 'correspondence';
+	language?: 'en' | 'es' | 'en-es' | 'unknown';  // Document language
 
 	// Court information
-	court?: string;           // "65th District Court"
-	county?: string;          // "El Paso County"
+	court?: string;           // "65th District Court" (normalized to English)
+	county?: string;          // "El Paso County" (normalized to English)
 	jurisdiction?: string;    // "Texas"
 	case_number?: string;     // "CV-2025-12345"
 
@@ -88,7 +89,16 @@ export async function extractLegalMetadata(
 		.map(e => e.text);
 
 	// Build extraction prompt
-	const prompt = `You are a legal document metadata extraction expert. Analyze this document structure and extract comprehensive legal metadata.
+	const prompt = `You are a legal document metadata extraction expert with multilingual capabilities (English and Spanish).
+
+**IMPORTANT**: This document may be in Spanish or English. Extract metadata accurately regardless of language.
+
+**OUTPUT REQUIREMENTS**:
+- Metadata field names: ALWAYS in English
+- Court names: Normalize to English (e.g., "Juzgado 65º Distrito" → "65th District Court")
+- Legal concepts: ALWAYS in English (e.g., "fraude extrínseco" → "extrinsic_fraud")
+- Names/actors: PRESERVE original language with proper accents (e.g., "María Pacileo")
+- Content language: Detect and note in metadata
 
 **Document Structure:**
 
