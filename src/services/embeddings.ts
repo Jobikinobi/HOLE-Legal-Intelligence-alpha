@@ -18,8 +18,7 @@ export interface EmbeddingResult {
  */
 export class EmbeddingsService {
 	private client: OpenAI;
-	private model: string = 'text-embedding-3-small';
-	private dimensions: number = 1536;
+	private model: string = 'text-embedding-ada-002';  // Using ada-002 for wider availability
 
 	constructor(apiKey: string) {
 		this.client = new OpenAI({ apiKey });
@@ -32,8 +31,8 @@ export class EmbeddingsService {
 		try {
 			const response = await this.client.embeddings.create({
 				model: this.model,
-				input: text,
-				dimensions: this.dimensions
+				input: text
+				// ada-002 doesn't support dimensions parameter (always 1536)
 			});
 
 			return {
@@ -61,8 +60,8 @@ export class EmbeddingsService {
 			try {
 				const response = await this.client.embeddings.create({
 					model: this.model,
-					input: batch,
-					dimensions: this.dimensions
+					input: batch
+					// ada-002 doesn't support dimensions parameter
 				});
 
 				// Add batch results

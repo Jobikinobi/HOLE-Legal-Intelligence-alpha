@@ -1,22 +1,22 @@
 name = "legal-intelligence-alpha"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
 
 # Neon PostgreSQL via Hyperdrive (connection pooling)
-# Configure after creating Hyperdrive config
-# [[hyperdrive]]
-# binding = "NEON"
-# id = "your-hyperdrive-id"
+[[hyperdrive]]
+binding = "NEON"
+id = "3e02dcf106b44955952526daf6517136"
 
 # R2 bucket for PDF storage
-# [[r2_buckets]]
-# binding = "DOCUMENTS_R2"
-# bucket_name = "legal-documents"
+[[r2_buckets]]
+binding = "DOCUMENTS_R2"
+bucket_name = "legal-documents"
 
 # KV for caching query results
-# [[kv_namespaces]]
-# binding = "CACHE_KV"
-# id = "your-kv-namespace-id"
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "b23cb03cb0034a5b9f870b802171e614"
 
 [vars]
 PROJECT_DEFAULT = "alt"

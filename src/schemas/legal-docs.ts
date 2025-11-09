@@ -185,7 +185,7 @@ export const DraftMotionSchema = z.object({
 		.optional()
 		.describe('Document UUIDs to cite as evidence. System will retrieve and include as exhibits.'),
 
-	templateVars: z.record(z.string())
+	templateVars: z.record(z.string(), z.string())
 		.optional()
 		.describe('Additional template variables. Example: {"plaintiff": "Dr. John Doe", "defendant": "Maria Pacileo"}')
 }).strict();
@@ -221,3 +221,89 @@ export const GetDocumentSchema = z.object({
 }).strict();
 
 export type GetDocumentInput = z.infer<typeof GetDocumentSchema>;
+
+/**
+ * JSON Schema versions for MCP Tool definitions
+ * (MCP SDK requires JSON Schema, not Zod schemas)
+ *
+ * Note: We define these manually instead of using zod-to-json-schema
+ * to avoid peer dependency conflicts with Zod 4.x
+ */
+export const TrackDocumentJsonSchema = {
+	type: "object",
+	properties: {
+		project: { type: "string", enum: ["azure", "alt"], default: "alt" },
+		title: { type: "string", minLength: 1, maxLength: 500 },
+		filePath: { type: "string", minLength: 1 },
+		category: { type: "string", enum: ["motion", "case-law", "evidence", "email", "police-report", "court-order", "correspondence"] },
+		uploadToR2: { type: "boolean", default: true },
+		extractMetadata: { type: "boolean", default: true },
+		metadata: {
+			type: "object",
+			properties: {
+				court: { type: "string" },
+				county: { type: "string" },
+				caseNumber: { type: "string" },
+				filingDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+				actors: { type: "array", items: { type: "string" } },
+				legalConcepts: { type: "array", items: { type: "string" } }
+			}
+		}
+	},
+	required: ["title", "filePath", "category"]
+} as const;
+
+export const SearchDocumentsJsonSchema = {
+	type: "object",
+	properties: {
+		query: { type: "string", minLength: 1, maxLength: 1000 },
+		projects: { type: "array", items: { type: "string", enum: ["azure", "alt"] } },
+		filters: {
+			type: "object",
+			properties: {
+				category: { type: "array", items: { type: "string" } },
+				actors: { type: "array", items: { type: "string" } },
+				legalConcepts: { type: "array", items: { type: "string" } },
+				court: { type: "string" },
+				dateRange: {
+					type: "object",
+					properties: {
+						start: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+						end: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+					}
+				},
+				privileged: { type: "boolean" }
+			}
+		},
+		limit: { type: "number", minimum: 1, maximum: 50, default: 10 },
+		responseFormat: { type: "string", enum: ["json", "markdown"], default: "markdown" }
+	},
+	required: ["query"]
+} as const;
+
+export const AnalyzeDocumentJsonSchema = {
+	type: "object",
+	properties: {
+		filePath: { type: "string", minLength: 1 },
+		operations: {
+			type: "array",
+			items: {
+				type: "string",
+				enum: ["extract_metadata", "classify_document", "identify_parties", "extract_citations", "identify_actors", "tag_concepts", "summarize"]
+			},
+			default: ["extract_metadata", "classify_document"]
+		},
+		deepAnalysis: { type: "boolean", default: false }
+	},
+	required: ["filePath"]
+} as const;
+
+export const GetDocumentJsonSchema = {
+	type: "object",
+	properties: {
+		project: { type: "string", enum: ["azure", "alt"], default: "alt" },
+		documentId: { type: "string", format: "uuid" },
+		includeFullText: { type: "boolean", default: false }
+	},
+	required: ["documentId"]
+} as const;

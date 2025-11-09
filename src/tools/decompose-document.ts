@@ -148,17 +148,32 @@ export async function handleDecomposeDocument(
 		const pdfBytes = await fs.readFile(input.filePath);
 
 		// 2. Process with Unstructured.io to extract ALL elements
-		const { partition } = await import('unstructured-client');
-		const elements = await partition({
-			files: {
-				content: pdfBytes,
-				fileName: input.filePath.split('/').pop() || 'document.pdf'
-			},
-			strategy: 'hi_res',
-			extractImageBlockTypes: ['Image', 'Table'],
-			pdfInferTableStructure: true,
-			languages: ['eng']
+		const { UnstructuredClient } = await import('unstructured-client');
+		const { Strategy } = await import('unstructured-client/sdk/models/shared/partitionparameters.js');
+
+		const client = new UnstructuredClient({
+			serverURL: 'https://api.unstructuredapp.io',
+			security: {
+				apiKeyAuth: env.UNSTRUCTURED_API_KEY
+			}
 		});
+
+		const response = await client.general.partition({
+			partitionParameters: {
+				files: {
+					content: pdfBytes,
+					fileName: input.filePath.split('/').pop() || 'document.pdf'
+				},
+				strategy: Strategy.HiRes,
+				extractImageBlockTypes: ['Image', 'Table'],
+				pdfInferTableStructure: true,
+				languages: ['eng']
+			}
+		});
+
+		// Extract elements from response
+		const rawElements = typeof response === 'string' ? JSON.parse(response) : response;
+		const elements = Array.isArray(rawElements) ? rawElements : rawElements.elements || [];
 
 		// 3. Detect document boundaries using Claude
 		const boundaries = await detectDocumentBoundaries(

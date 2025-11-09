@@ -10,7 +10,7 @@
  */
 
 import { UnstructuredClient } from 'unstructured-client';
-import { Strategy, PartitionResponse } from 'unstructured-client/sdk/models/operations';
+import { Strategy } from 'unstructured-client/sdk/models/shared/partitionparameters.js';
 import { extractLegalMetadata, type LegalMetadata, type UnstructuredElement } from './metadata-extractor';
 
 export interface ProcessedDocument {
@@ -56,23 +56,31 @@ export async function processLegalDocument(
 
 	try {
 		// Step 1: Process document with Unstructured.io
+		const strategyMap = {
+			'hi_res': Strategy.HiRes,
+			'fast': Strategy.Fast,
+			'auto': Strategy.Auto
+		};
+
 		const response = await client.general.partition({
 			partitionParameters: {
 				files: {
 					content: new Uint8Array(fileBuffer),
 					fileName: fileName
 				},
-				strategy: config.strategy || Strategy.HiRes,
+				strategy: strategyMap[config.strategy || 'hi_res'],
 				languages: ['eng', 'spa'],  // ⭐ English + Spanish support
 				extractImageBlockTypes: ['Image', 'Table'],
 				pdfInferTableStructure: true,
-				splitPdfConcurrency: 3,
+				splitPdfConcurrencyLevel: 3,
 				splitPdfAllowFailed: true
 			}
 		});
 
 		// Extract elements from response
-		const elements: UnstructuredElement[] = (response.elements || []).map((el: any) => ({
+		// The SDK returns the response differently in v0.29.0
+		const rawElements = typeof response === 'string' ? JSON.parse(response) : response;
+		const elements: UnstructuredElement[] = (Array.isArray(rawElements) ? rawElements : rawElements.elements || []).map((el: any) => ({
 			type: el.type || 'Unknown',
 			text: el.text || '',
 			metadata: el.metadata

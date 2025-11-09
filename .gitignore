@@ -5,6 +5,8 @@ node_modules/
 # Build output
 dist/
 .wrangler/
+*.js
+worker-configuration.d.ts
 
 # Environment variables
 .env
@@ -31,6 +33,7 @@ Thumbs.db
 
 # Testing
 coverage/
+test/
 
 # Temporary files
 tmp/

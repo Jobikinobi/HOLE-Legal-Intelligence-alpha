@@ -23,6 +23,10 @@ import {
 	SearchDocumentsSchema,
 	AnalyzeDocumentSchema,
 	GetDocumentSchema,
+	TrackDocumentJsonSchema,
+	SearchDocumentsJsonSchema,
+	AnalyzeDocumentJsonSchema,
+	GetDocumentJsonSchema,
 	type TrackDocumentInput,
 	type SearchDocumentsInput,
 	type AnalyzeDocumentInput,
@@ -70,7 +74,11 @@ class LegalMCPServer {
 		);
 
 		// Initialize service clients
-		this.neonService = new NeonService(env.NEON_DATABASE_URL);
+		// Note: env.NEON is the Hyperdrive binding configured in wrangler.toml
+		if (!env.NEON) {
+			throw new Error('Hyperdrive binding (NEON) not configured');
+		}
+		this.neonService = new NeonService(env.NEON);
 		this.pineconeService = new PineconeService(
 			env.PINECONE_API_KEY,
 			'us-east-1-aws',
@@ -154,7 +162,7 @@ This tool:
   "project": "alt"
 }
 \`\`\``,
-				inputSchema: TrackDocumentSchema
+				inputSchema: TrackDocumentJsonSchema as any
 			},
 
 			{
@@ -184,7 +192,7 @@ This tool combines:
   "limit": 10
 }
 \`\`\``,
-				inputSchema: SearchDocumentsSchema
+				inputSchema: SearchDocumentsJsonSchema as any
 			},
 
 			{
@@ -218,7 +226,7 @@ Performs deep document analysis:
   "deepAnalysis": false
 }
 \`\`\``,
-				inputSchema: AnalyzeDocumentSchema
+				inputSchema: AnalyzeDocumentJsonSchema as any
 			},
 
 			{
@@ -243,9 +251,32 @@ Returns enriched document data including:
   "includeFullText": false
 }
 \`\`\``,
-				inputSchema: GetDocumentSchema
+				inputSchema: GetDocumentJsonSchema as any
 			}
 		];
+	}
+
+	/**
+	 * Helper: Read file from R2 or accept file buffer
+	 * In Cloudflare Workers, we can't read from local filesystem
+	 * Files should be either uploaded to R2 first, or sent as buffers
+	 */
+	private async readFile(filePathOrR2Key: string, r2Bucket?: R2Bucket): Promise<ArrayBuffer> {
+		// If R2 bucket is available, try to read from R2
+		if (r2Bucket) {
+			const object = await r2Bucket.get(filePathOrR2Key);
+			if (object) {
+				return await object.arrayBuffer();
+			}
+		}
+
+		// Fallback: For development/testing, we might fetch from a URL
+		// In production, this code path should not be reached
+		throw new Error(
+			`File not found: ${filePathOrR2Key}. ` +
+			`In Cloudflare Workers, files must be uploaded to R2 first. ` +
+			`Use the R2 bucket to store files before processing.`
+		);
 	}
 
 	/**
@@ -258,20 +289,32 @@ Returns enriched document data including:
 			// Validate input
 			const validated = TrackDocumentSchema.parse(input);
 
-			// 1. Read file and upload to R2
-			let r2Key = '';
-			if (validated.uploadToR2 && env.DOCUMENTS_R2) {
-				const fileData = await Deno.readFile(validated.filePath);  // Will use proper file reading in Cloudflare
-				r2Key = `${validated.project}/${Date.now()}-${validated.filePath.split('/').pop()}`;
-				await env.DOCUMENTS_R2.put(r2Key, fileData);
+			// 1. Verify file exists in R2
+			// Note: In Cloudflare Workers, the file should already be uploaded to R2
+			// The filePath becomes the R2 key
+			let r2Key = validated.filePath;
+
+			// Verify the file exists in R2
+			if (env.DOCUMENTS_R2) {
+				const exists = await env.DOCUMENTS_R2.head(r2Key);
+				if (!exists) {
+					throw new Error(
+						`File not found in R2: ${r2Key}. ` +
+						`Please upload the file to R2 before tracking it. ` +
+						`Use: wrangler r2 object put legal-documents/${r2Key} --file /path/to/file.pdf`
+					);
+				}
+			} else {
+				throw new Error('R2 bucket (DOCUMENTS_R2) not configured');
 			}
 
 			// 2. Process with Unstructured.io + Claude metadata extraction
 			let processedDoc;
 			if (validated.extractMetadata) {
-				const fileData = await Deno.readFile(validated.filePath);
+				// Read file from R2
+				const fileBuffer = await this.readFile(r2Key, env.DOCUMENTS_R2);
 				processedDoc = await processLegalDocument(
-					fileData.buffer,
+					fileBuffer,
 					validated.filePath.split('/').pop() || 'document.pdf',
 					{
 						unstructuredApiKey: env.UNSTRUCTURED_API_KEY,
@@ -299,39 +342,49 @@ Returns enriched document data including:
 				Date.now() - startTime
 			);
 
-			// 4. Generate embedding and store in Pinecone
-			const searchableContent = generateSearchableContent(processedDoc!);
-			const embeddingResult = await this.embeddingsService.generateEmbedding(searchableContent);
+			// 4. Generate embedding and store in Pinecone (optional - skip if embeddings not available)
+			let embeddingResult: any = null;
+			let pineconeIndexed = false;
 
-			await this.pineconeService.upsertDocument(
-				documentId,
-				embeddingResult.embedding,
-				{
-					project: validated.project,
-					category: validated.category,
-					title: validated.title,
-					court: processedDoc!.metadata.court,
-					filing_date: processedDoc!.metadata.filing_date,
-					legal_concepts: processedDoc!.metadata.legal_concepts
-				}
-			);
+			try {
+				const searchableContent = generateSearchableContent(processedDoc!);
+				embeddingResult = await this.embeddingsService.generateEmbedding(searchableContent);
 
-			// 5. Mark as indexed in Neon
-			await this.neonService.markPineconeIndexed(schema, documentId);
+				await this.pineconeService.upsertDocument(
+					documentId,
+					embeddingResult.embedding,
+					{
+						project: validated.project,
+						category: validated.category,
+						title: validated.title,
+						court: processedDoc!.metadata.court,
+						filing_date: processedDoc!.metadata.filing_date,
+						legal_concepts: processedDoc!.metadata.legal_concepts
+					}
+				);
+
+				// 5. Mark as indexed in Neon
+				await this.neonService.markPineconeIndexed(schema, documentId);
+				pineconeIndexed = true;
+			} catch (embeddingError) {
+				console.warn('Embeddings/Pinecone indexing skipped:', embeddingError);
+				// Continue without embeddings - document is still stored in Neon
+			}
 
 			// 6. Log processing
 			await this.neonService.logProcessing(
 				schema,
 				documentId,
-				'indexed',
+				pineconeIndexed ? 'indexed' : 'processed',
 				'success',
 				{
 					elements_extracted: processedDoc!.elements.length,
 					metadata_fields: Object.keys(processedDoc!.metadata).length,
-					embedding_tokens: embeddingResult.tokenCount
+					embedding_tokens: embeddingResult?.tokenCount || 0,
+					pinecone_indexed: pineconeIndexed
 				},
 				Date.now() - startTime,
-				this.embeddingsService.estimateCost(embeddingResult.tokenCount) + 0.0001  // Unstructured cost
+				(embeddingResult ? this.embeddingsService.estimateCost(embeddingResult.tokenCount) : 0) + 0.0001  // Unstructured cost
 			);
 
 			return {
@@ -454,9 +507,10 @@ Returns enriched document data including:
 			const validated = AnalyzeDocumentSchema.parse(input);
 
 			// Process document with Unstructured + Claude
-			const fileData = await Deno.readFile(validated.filePath);  // Will use proper file reading
+			// Read from R2 (filePath is treated as R2 key)
+			const fileBuffer = await this.readFile(validated.filePath, env.DOCUMENTS_R2);
 			const processed = await processLegalDocument(
-				fileData.buffer,
+				fileBuffer,
 				validated.filePath.split('/').pop() || 'document.pdf',
 				{
 					unstructuredApiKey: env.UNSTRUCTURED_API_KEY,
@@ -573,18 +627,181 @@ Returns enriched document data including:
 }
 
 /**
- * Cloudflare Workers fetch handler
+ * JSON-RPC 2.0 Request/Response types
+ */
+interface JsonRpcRequest {
+	jsonrpc: '2.0';
+	id?: string | number | null;
+	method: string;
+	params?: any;
+}
+
+interface JsonRpcResponse {
+	jsonrpc: '2.0';
+	id: string | number | null;
+	result?: any;
+	error?: {
+		code: number;
+		message: string;
+		data?: any;
+	};
+}
+
+/**
+ * Cloudflare Workers fetch handler with MCP HTTP Transport
  */
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
-		// For now, return a simple health check
-		// Full MCP HTTP transport will be added next
-		return new Response(JSON.stringify({
-			service: 'HOLE Legal Intelligence Alpha',
-			status: 'online',
-			version: '1.0.0'
-		}), {
-			headers: { 'Content-Type': 'application/json' }
-		});
+		// Handle CORS preflight
+		if (request.method === 'OPTIONS') {
+			return new Response(null, {
+				headers: {
+					'Access-Control-Allow-Origin': '*',
+					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+					'Access-Control-Allow-Headers': 'Content-Type',
+				}
+			});
+		}
+
+		// Health check endpoint
+		if (request.method === 'GET' && new URL(request.url).pathname === '/health') {
+			return new Response(JSON.stringify({
+				service: 'HOLE Legal Intelligence Alpha',
+				status: 'online',
+				version: '1.0.0',
+				timestamp: new Date().toISOString()
+			}), {
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*'
+				}
+			});
+		}
+
+		// Only accept POST for MCP requests
+		if (request.method !== 'POST') {
+			return new Response('Method not allowed', {
+				status: 405,
+				headers: { 'Access-Control-Allow-Origin': '*' }
+			});
+		}
+
+		try {
+			// Parse JSON-RPC request
+			const jsonRpcRequest = await request.json() as JsonRpcRequest;
+
+			// Validate JSON-RPC 2.0 format
+			if (jsonRpcRequest.jsonrpc !== '2.0') {
+				return jsonRpcError(jsonRpcRequest.id || null, -32600, 'Invalid Request: jsonrpc must be "2.0"');
+			}
+
+			// Initialize MCP server instance
+			const mcpServer = new LegalMCPServer(env);
+
+			// Route to appropriate handler
+			let result: any;
+
+			switch (jsonRpcRequest.method) {
+				case 'initialize':
+					result = {
+						protocolVersion: '2024-11-05',
+						capabilities: {
+							tools: {}
+						},
+						serverInfo: {
+							name: 'legal-intelligence-alpha',
+							version: '1.0.0'
+						}
+					};
+					break;
+
+				case 'tools/list':
+					result = {
+						tools: mcpServer['getTools']()  // Access private method
+					};
+					break;
+
+				case 'tools/call':
+					const { name, arguments: args } = jsonRpcRequest.params || {};
+
+					if (!name) {
+						return jsonRpcError(jsonRpcRequest.id || null, -32602, 'Invalid params: name is required');
+					}
+
+					// Call the appropriate tool handler
+					switch (name) {
+						case 'legal_track_document':
+							result = await mcpServer['handleTrackDocument'](args, env);
+							break;
+
+						case 'legal_search_documents':
+							result = await mcpServer['handleSearchDocuments'](args, env);
+							break;
+
+						case 'legal_analyze_document':
+							result = await mcpServer['handleAnalyzeDocument'](args, env);
+							break;
+
+						case 'legal_get_document':
+							result = await mcpServer['handleGetDocument'](args, env);
+							break;
+
+						default:
+							return jsonRpcError(jsonRpcRequest.id || null, -32601, `Method not found: ${name}`);
+					}
+					break;
+
+				default:
+					return jsonRpcError(jsonRpcRequest.id || null, -32601, `Method not found: ${jsonRpcRequest.method}`);
+			}
+
+			// Return JSON-RPC success response
+			return jsonRpcSuccess(jsonRpcRequest.id || null, result);
+
+		} catch (error) {
+			console.error('MCP Server error:', error);
+			return jsonRpcError(null, -32603, `Internal error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		}
 	}
 };
+
+/**
+ * Create JSON-RPC 2.0 success response
+ */
+function jsonRpcSuccess(id: string | number | null, result: any): Response {
+	const response: JsonRpcResponse = {
+		jsonrpc: '2.0',
+		id,
+		result
+	};
+
+	return new Response(JSON.stringify(response), {
+		headers: {
+			'Content-Type': 'application/json',
+			'Access-Control-Allow-Origin': '*'
+		}
+	});
+}
+
+/**
+ * Create JSON-RPC 2.0 error response
+ */
+function jsonRpcError(id: string | number | null, code: number, message: string, data?: any): Response {
+	const response: JsonRpcResponse = {
+		jsonrpc: '2.0',
+		id,
+		error: {
+			code,
+			message,
+			...(data && { data })
+		}
+	};
+
+	return new Response(JSON.stringify(response), {
+		status: 200,  // JSON-RPC errors use 200 status with error object
+		headers: {
+			'Content-Type': 'application/json',
+			'Access-Control-Allow-Origin': '*'
+		}
+	});
+}

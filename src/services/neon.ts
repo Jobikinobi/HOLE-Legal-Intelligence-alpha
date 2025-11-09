@@ -5,6 +5,7 @@
  * Supports multi-tenant architecture (shared, project_azure, project_alt schemas).
  */
 
+import postgres from 'postgres';
 import type { LegalMetadata } from './metadata-extractor';
 
 export type ProjectSchema = 'project_azure' | 'project_alt';
@@ -33,7 +34,7 @@ export interface DocumentRecord {
  * Neon client for legal document database operations
  */
 export class NeonService {
-	constructor(private databaseUrl: string) {}
+	constructor(private hyperdrive: Hyperdrive) {}
 
 	/**
 	 * Insert a new document with extracted metadata
@@ -64,20 +65,20 @@ export class NeonService {
 		`;
 
 		const params = [
-			metadata.title,
+			metadata.title || 'Untitled Document',
 			filePath,
 			r2Key,
-			metadata.document_type,
-			metadata.court,
-			metadata.county,
-			metadata.jurisdiction,
-			metadata.case_number,
-			metadata.filing_date,
-			metadata.decision_date,
-			metadata.event_date,
+			metadata.document_type ?? null,
+			metadata.court ?? null,
+			metadata.county ?? null,
+			metadata.jurisdiction ?? null,
+			metadata.case_number ?? null,
+			metadata.filing_date ?? null,
+			metadata.decision_date ?? null,
+			metadata.event_date ?? null,
 			'unstructured',
 			processingTimeMs,
-			metadata.extraction_confidence || 0.8,
+			metadata.extraction_confidence ?? 0.8,
 			false  // Will be set to true after Pinecone indexing
 		];
 
@@ -279,16 +280,27 @@ export class NeonService {
 	}
 
 	/**
-	 * Execute query (will be replaced with actual Hyperdrive execution)
+	 * Execute query using Cloudflare Hyperdrive
 	 */
 	private async executeQuery(query: string, params: any[]): Promise<any> {
-		// Placeholder - will be implemented with Cloudflare Hyperdrive binding
-		// For now, this shows the interface
-		console.log('Query:', query);
-		console.log('Params:', params);
+		// Get the connection string from Hyperdrive binding
+		// Hyperdrive provides connection pooling and caching for Neon PostgreSQL
+		const sql = postgres(this.hyperdrive.connectionString, {
+			prepare: false  // Disable prepared statements for Workers compatibility
+		});
 
-		return {
-			rows: []  // Placeholder
-		};
+		try {
+			// Execute the query with parameterized values
+			const result = await sql.unsafe(query, params);
+
+			// postgres.js returns results differently than node-postgres
+			// Convert to a format compatible with our code
+			return {
+				rows: result
+			};
+		} finally {
+			// Close the connection
+			await sql.end();
+		}
 	}
 }

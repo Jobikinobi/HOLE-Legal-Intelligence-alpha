@@ -178,7 +178,7 @@ export class PineconeService {
 		return results.matches?.map(match => ({
 			id: match.id,
 			score: match.score || 0,
-			metadata: match.metadata as VectorMetadata
+			metadata: (match.metadata || {}) as unknown as VectorMetadata
 		})) || [];
 	}
 
