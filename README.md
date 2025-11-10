@@ -1,370 +1,303 @@
 # HOLE Legal Intelligence System (Alpha)
 
-**AI-Powered Legal Document Tracking + Vector Search + Motion Drafting**
+**AI-Powered Legal Document Intelligence - Deployed & Operational** ✅
 
-## Overview
+[![Status](https://img.shields.io/badge/status-deployed-success)](https://legal-intelligence-alpha.joe-1a2.workers.dev/health)
+[![License](https://img.shields.io/badge/license-Private-red)](LICENSE)
 
-This system provides comprehensive legal document intelligence with:
-- **Automatic metadata extraction** from PDFs using Unstructured.io + Claude API
-- **Hybrid search** (structured SQL queries + semantic vector search)
-- **Multi-tenant architecture** (supports parallel Azure vs Unstructured testing)
-- **AI-assisted motion drafting** with templates
-- **Cloudflare Workers deployment** (unlimited timeout, global edge)
+## Live System
 
-## The Problems This Solves
+🌐 **Worker URL**: https://legal-intelligence-alpha.joe-1a2.workers.dev  
+📊 **Status**: [Check Health](https://legal-intelligence-alpha.joe-1a2.workers.dev/health)  
+📂 **GitHub**: https://github.com/Jobikinobi/HOLE-Legal-Intelligence-alpha
 
-### Problem 1: Azure DI Doesn't Extract Queryable Metadata
+## What This System Does
 
-**Azure Document Intelligence alone** extracts text but doesn't structure it as queryable metadata.
+### Core Capabilities (Currently Working ✅)
 
-**Impact**: Can only full-text search. Can't filter by court, actors, legal concepts.
+1. **Automatic PDF Processing**
+   - Upload PDF → Extract structure with Unstructured.io
+   - Claude AI extracts legal metadata automatically
+   - Store in PostgreSQL + generate embeddings
+   - **Processing time**: 3-9 seconds per document
 
-### Problem 2: Government Records Are Chaotic Multi-Document PDFs ⚠️ CRITICAL
+2. **Intelligent Metadata Extraction**
+   - Court, county, jurisdiction
+   - Case numbers and dates
+   - Parties (plaintiff, defendant, etc.)
+   - Actors (all people mentioned)
+   - Legal concepts (Brady violation, fraud, etc.)
+   - Case law citations
 
-**Reality of public records requests**:
-- Single PDF contains MULTIPLE unrelated documents
-- Mixed types: Police reports + emails + SMS + photos all in one file
-- Different incidents/cases bundled together
-- Deliberately or carelessly disorganized
+3. **Hybrid Search** (95% complete)
+   - SQL filtering by metadata (working ✅)
+   - Semantic vector search (pending Voyage AI switch)
+   - Combined: Most powerful legal search possible
 
-**Example**: `elpaso_pd_response.pdf` (50 pages) contains:
-- Pages 1-15: Police Report (Incident A)
-- Pages 16-23: Email chain
-- Pages 24-28: SMS screenshots
-- Pages 29-45: Unrelated incident report (Incident B)
-- Pages 46-50: Photos
+4. **MCP Integration**
+   - Model Context Protocol server
+   - JSON-RPC 2.0 over HTTP
+   - 4 legal intelligence tools
+   - Can be used with Claude Desktop or any MCP client
 
-**Standard systems assume**: 1 PDF = 1 document (WRONG!)
+## Quick Start (New Machine)
 
-**This system handles chaotic PDFs** with document decomposition preprocessing.
+### One-Command Setup
+```bash
+# Clone and navigate
+git clone https://github.com/Jobikinobi/HOLE-Legal-Intelligence-alpha.git
+cd HOLE-Legal-Intelligence-alpha
 
----
+# Run verification
+./scripts/verify-setup.sh
+
+# If missing prerequisites, install them, then:
+./scripts/setup-infrastructure.sh  # Creates Cloudflare resources
+./scripts/deploy.sh                # Deploys Worker
+./scripts/test-system.sh           # Verifies everything works
+```
+
+### Prerequisites
+
+**Required Tools**:
+- Node.js 20+
+- pnpm
+- wrangler (Cloudflare CLI)
+- secretspec
+- PostgreSQL client
+- jq, curl
+
+**Install on macOS**:
+```bash
+brew install node pnpm jq postgresql@15
+npm install -g wrangler
+cargo install --git https://github.com/ripatel-fd/secretspec
+```
+
+**Required Accounts**:
+- Cloudflare (Workers)
+- Neon (PostgreSQL)
+- Pinecone (Vector DB)
+- OpenAI or Voyage AI (Embeddings)
+- Anthropic (Claude API)
+- Unstructured.io (Document processing)
+
+### Detailed Setup Guide
+
+📖 **See**: [docs/PORTABLE_SETUP.md](docs/PORTABLE_SETUP.md)
 
 ## Architecture
 
-### Stage 0: Document Decomposition (PUBLIC RECORDS PDFs) ⭐ NEW
-
 ```
-Chaotic Multi-Document PDF (government FOIA response)
-   │
-   ├─> Unstructured.io (extract ALL elements with page numbers)
-   │
-   ├─> Claude API (detect document boundaries)
-   │   └─> Identifies: Pages 1-15 = Police Report, Pages 16-23 = Email Chain, etc.
-   │
-   └─> PDF Splitting (pdf-lib)
-       └─> Creates discrete PDFs: report.pdf, email.pdf, sms.pdf, etc.
+┌─────────────────────────────────────────────────┐
+│  Cloudflare Workers (Edge Network)              │
+│  https://legal-intelligence-alpha.workers.dev   │
+│                                                 │
+│  ┌──────────────────────────────────────────┐  │
+│  │ MCP Server (JSON-RPC 2.0 over HTTP)      │  │
+│  │ - legal_track_document                   │  │
+│  │ - legal_search_documents                 │  │
+│  │ - legal_analyze_document                 │  │
+│  │ - legal_get_document                     │  │
+│  └─────────────┬────────────────────────────┘  │
+│                │                                │
+│    ┌───────────┼───────────────────────┐       │
+│    │           │                       │       │
+│    ▼           ▼                       ▼       │
+│  ┌────┐    ┌─────────┐           ┌────────┐   │
+│  │ R2 │    │Hyperdrive│           │   KV   │   │
+│  │PDF │    │  (Neon) │           │ Cache  │   │
+│  └────┘    └─────────┘           └────────┘   │
+└─────────────────┼───────────────────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+        ▼                   ▼
+  ┌──────────┐       ┌──────────┐
+  │   Neon   │       │ Pinecone │
+  │PostgreSQL│       │ Vectors  │
+  │ 3 schemas│       │1024 dims │
+  └──────────┘       └──────────┘
 ```
-
-### Stage 1-3: Standard Processing (Discrete Documents)
-
-```
-Discrete PDF Document
-   │
-   ├─> Unstructured.io (extracts structure)
-   │   └─> Elements: [Title, Header, NarrativeText, Table...]
-   │
-   ├─> Claude API (extracts legal metadata from structure)
-   │   └─> Metadata: {court, actors, legal_concepts, citations...}
-   │
-   ├─> Neon PostgreSQL (stores metadata - queryable!)
-   │   └─> Filter: WHERE court = '65th District' AND actor = 'dos Santos'
-   │
-   └─> Pinecone (stores embeddings)
-       └─> Semantic search within filtered results
-```
-
----
-
-## Prerequisites
-
-### Required Accounts
-- [x] Neon PostgreSQL account (free tier sufficient)
-- [x] Pinecone account (you have paid plan)
-- [x] OpenAI API key (embeddings)
-- [x] Anthropic API key (metadata extraction, drafting)
-- [x] Unstructured.io API key (you have this ready)
-- [x] Cloudflare account (Workers deployment)
-
-### Required Tools
-- Node.js 18+
-- pnpm (package manager)
-- SecretSpec (your macOS Keychain secret manager)
-- Wrangler CLI (Cloudflare)
-
----
-
-## Quick Start
-
-### 1. Configure Secrets (SecretSpec)
-
-All API keys are managed via SecretSpec (macOS Keychain integration):
-
-```bash
-# Check which secrets are needed
-secretspec check
-
-# Add secrets (interactive - prompts for each)
-secretspec set NEON_DATABASE_URL
-secretspec set PINECONE_API_KEY
-secretspec set OPENAI_API_KEY
-secretspec set ANTHROPIC_API_KEY
-secretspec set UNSTRUCTURED_API_KEY
-secretspec set CLOUDFLARE_ACCOUNT_ID
-secretspec set CLOUDFLARE_API_TOKEN
-
-# Or add non-interactively
-secretspec set NEON_DATABASE_URL --value "postgresql://user:pass@host/db"
-
-# Verify all secrets configured
-secretspec check  # Should show ✓ for all required secrets
-```
-
-**Secrets are stored in macOS Keychain** - never in `.env` files!
-
-### 2. Set Up Neon Database
-
-```bash
-# Create database (via Neon console or API)
-# Name: legal-intelligence-alpha
-
-# Run migrations
-psql $NEON_DATABASE_URL < migrations/001_multi_tenant_schema.sql
-```
-
-This creates:
-- `shared` schema (case law, templates, concepts)
-- `project_azure` schema (Azure DI processed docs)
-- `project_alt` schema (Unstructured.io processed docs - THIS PROJECT)
-
-### 3. Set Up Pinecone Index
-
-```bash
-# Create index (via Pinecone console or API)
-# Name: legal-documents
-# Dimensions: 1536 (OpenAI text-embedding-3-small)
-# Metric: cosine
-# Pod type: p1 or serverless
-```
-
-### 4. Configure Cloudflare
-
-```bash
-# Install Wrangler
-pnpm add -g wrangler
-
-# Login to Cloudflare
-wrangler login
-
-# Set up Hyperdrive (Neon connection pooling)
-wrangler hyperdrive create legal-neon --connection-string="$NEON_DATABASE_URL"
-# Copy Hyperdrive ID to wrangler.toml
-
-# Create R2 bucket
-wrangler r2 bucket create legal-documents
-
-# Create KV namespace
-wrangler kv namespace create CACHE_KV
-# Copy namespace ID to wrangler.toml
-
-# Set secrets in Cloudflare
-secretspec run -- wrangler secret put NEON_DATABASE_URL
-secretspec run -- wrangler secret put PINECONE_API_KEY
-secretspec run -- wrangler secret put OPENAI_API_KEY
-secretspec run -- wrangler secret put ANTHROPIC_API_KEY
-secretspec run -- wrangler secret put UNSTRUCTURED_API_KEY
-```
-
-### 5. Develop Locally
-
-```bash
-# Install dependencies
-pnpm install
-
-# Run local development server
-secretspec run -- pnpm run dev
-
-# Test with MCP Inspector
-npx @modelcontextprotocol/inspector http://localhost:8787
-```
-
-### 6. Deploy to Cloudflare
-
-```bash
-# Build and deploy
-secretspec run -- pnpm run deploy
-
-# Your MCP server URL:
-# https://legal-intelligence-alpha.your-subdomain.workers.dev
-```
-
----
 
 ## MCP Tools
 
-### `legal_track_document`
+### 1. `legal_track_document`
+Track PDF in database with automatic metadata extraction.
 
-Add document to tracking database with automatic metadata extraction.
-
-**Example**:
-```typescript
+**Input**:
+```json
 {
-  "title": "Motion to Dismiss - Smith v. Jones",
-  "filePath": "/path/to/motion.pdf",
+  "title": "Motion to Dismiss - Doe v. Smith",
+  "filePath": "test/motion.pdf",
   "category": "motion",
-  "project": "alt"  // Use Unstructured.io processing
+  "project": "alt"
 }
 ```
 
-**What happens**:
-1. Uploads PDF to R2
-2. Processes with Unstructured.io → Structured elements
-3. Extracts metadata with Claude → Court, actors, legal concepts, citations
-4. Stores in Neon PostgreSQL → Queryable metadata
-5. Generates embedding → Stores in Pinecone
-6. Returns document UUID
+**Output**: Document UUID + extracted metadata
 
-### `legal_search_documents`
+### 2. `legal_search_documents`
+Hybrid SQL + vector search.
 
-Hybrid search: SQL filtering + vector similarity.
-
-**Example**:
-```typescript
+**Input**:
+```json
 {
-  "query": "emails showing coordination between Maria dos Santos and police",
+  "query": "emails about protective order coordination",
   "filters": {
     "category": ["email"],
-    "actors": ["Maria dos Santos", "Shawn Cowie"],
-    "dateRange": { "start": "2025-09-05", "end": "2025-09-07" }
+    "actors": ["Maria dos Santos"],
+    "dateRange": {"start": "2025-09-01", "end": "2025-09-30"}
   },
   "limit": 10
 }
 ```
 
-**What happens**:
-1. Neon SQL filters by actors + category + date
-2. Pinecone searches only those filtered document vectors
-3. Returns top matches with metadata + snippets
+**Output**: Ranked search results with metadata
 
-### `legal_analyze_document`
+### 3. `legal_analyze_document`
+Deep analysis of PDF structure and content.
 
-Deep AI analysis of legal document.
-
-**Example**:
-```typescript
+**Input**:
+```json
 {
-  "filePath": "/path/to/document.pdf",
-  "operations": ["extract_metadata", "classify_document", "extract_citations"]
+  "filePath": "test/document.pdf",
+  "operations": ["extract_metadata", "extract_citations"],
+  "deepAnalysis": false
 }
 ```
 
-**Returns**: Structured metadata JSON
+**Output**: Complete metadata + analysis
 
-### `legal_draft_motion`
+### 4. `legal_get_document`
+Retrieve full document details by UUID.
 
-AI-assisted motion generation with templates.
-
-**Example**:
-```typescript
+**Input**:
+```json
 {
-  "motionType": "bill-of-review",
-  "court": "65th District Court, El Paso County",
-  "facts": "Agreed to protective order under fraudulent inducement...",
-  "legalBasis": "Extrinsic fraud per Alexander v Hegadorn...",
-  "caseReferences": ["Alexander v Hegadorn"],
-  "evidenceDocIds": ["uuid-1", "uuid-2"]  // Emails showing coordination
+  "documentId": "uuid-here",
+  "project": "alt"
 }
 ```
 
-**Returns**: Formatted motion with citations and exhibit list
+**Output**: Complete document record
 
----
+## Project Structure
 
-## Key Features
+```
+HOLE-Legal-Intelligence-alpha/
+├── docs/                              # 📚 All documentation
+│   ├── PORTABLE_SETUP.md             # Complete setup guide
+│   ├── DEPLOYMENT_CHECKLIST.md       # Step-by-step checklist
+│   ├── VOYAGE_AI_SETUP.md            # Embedding model guide
+│   └── API_EXAMPLES.md               # Usage examples
+├── scripts/                           # 🔧 Automation scripts
+│   ├── verify-setup.sh               # Check prerequisites
+│   ├── setup-infrastructure.sh       # Create Cloudflare resources
+│   ├── deploy.sh                     # Build and deploy
+│   └── test-system.sh                # Run tests
+├── migrations/                        # 🗄️ Database schema
+│   └── 001_multi_tenant_schema.sql   # Initial schema
+├── src/                               # 💻 Source code
+│   ├── index.ts                      # Main Worker + HTTP transport
+│   ├── schemas/                      # MCP tool schemas
+│   ├── services/                     # Business logic
+│   │   ├── neon.ts                  # PostgreSQL queries
+│   │   ├── pinecone.ts              # Vector search
+│   │   ├── embeddings.ts            # Embedding generation
+│   │   ├── unstructured.ts          # PDF processing
+│   │   └── metadata-extractor.ts    # Claude extraction
+│   └── tools/                        # MCP tool handlers
+├── wrangler.toml                      # Cloudflare config
+├── secretspec.toml                    # Secret definitions
+├── package.json                       # Dependencies
+├── STATUS.md                          # Current system status
+└── SESSION_SUMMARY.md                 # Quick reference
 
-### Automatic Metadata Extraction ⭐
+```
 
-**The innovation**: Every document automatically gets:
-- Court, county, jurisdiction extracted
-- Parties (plaintiff, defendant) identified
-- Actors (all people mentioned) cataloged
-- Legal concepts tagged
-- Case citations extracted
-- Dates parsed
+## Current Status
 
-**No manual tagging required!**
+**System**: 95% Complete ✅  
+**Deployed**: https://legal-intelligence-alpha.joe-1a2.workers.dev  
+**Last Updated**: Nov 8, 2025
 
-### Hybrid Search
+### Working Components
+- ✅ Cloudflare Workers (deployed)
+- ✅ Neon PostgreSQL (via Hyperdrive)
+- ✅ R2 object storage
+- ✅ Unstructured.io processing
+- ✅ Claude metadata extraction
+- ✅ OpenAI embeddings (ada-002)
+- ✅ HTTP/JSON-RPC transport
+- ✅ Database queries & inserts
 
-**SQL handles**:
-- Exact filters (court, date, category)
-- Actor relationships (emails BETWEEN X AND Y)
-- Legal concept tags
-- Document relationships
+### Pending (15 min fix)
+- ⚠️ Pinecone indexing (dimension mismatch)
+- **Fix**: Switch to Voyage AI Law embeddings
+- **Guide**: [docs/VOYAGE_AI_SETUP.md](docs/VOYAGE_AI_SETUP.md)
 
-**Pinecone handles**:
-- Semantic similarity (conceptual search)
-- "Find similar to this document"
-- Search within filtered results
+### Test Results
+- 4 documents successfully processed
+- All stored in PostgreSQL
+- Embeddings generating (261 tokens/doc)
+- Metadata extraction working
 
-**Together**: Most powerful legal document search possible
+## Scripts
 
-### Multi-Tenant Testing
+### Verify Setup
+```bash
+./scripts/verify-setup.sh
+```
+Checks all prerequisites and configuration.
 
-- `project_azure`: Your existing Azure DI approach
-- `project_alt`: This Unstructured.io approach
-- `shared`: Case law library used by both
+### Setup Infrastructure
+```bash
+./scripts/setup-infrastructure.sh
+```
+Creates Cloudflare resources (Hyperdrive, R2, KV) automatically.
 
-**Compare**: Which approach extracts better metadata? Use `legal_compare_approaches` tool.
+### Deploy
+```bash
+./scripts/deploy.sh
+```
+Builds TypeScript, deploys Worker, runs tests.
 
----
+### Test System
+```bash
+./scripts/test-system.sh
+```
+Runs comprehensive health checks.
 
-## Cost Breakdown
+## Documentation
 
-### One-Time (1,500 documents)
-- Unstructured.io API: $1.50 (vs Azure $22.50)
-- OpenAI embeddings: $1.50
-- Neon storage: $0 (free tier)
-- Pinecone: Included in your plan
-- **Total: $3** (vs Azure $22.50)
+| Doc | Purpose |
+|-----|---------|
+| [STATUS.md](STATUS.md) | Current deployment status |
+| [SESSION_SUMMARY.md](SESSION_SUMMARY.md) | Latest session notes |
+| [docs/PORTABLE_SETUP.md](docs/PORTABLE_SETUP.md) | Complete setup guide |
+| [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) | Step-by-step checklist |
+| [docs/VOYAGE_AI_SETUP.md](docs/VOYAGE_AI_SETUP.md) | Embedding model fix |
 
-### Monthly Ongoing
-- Unstructured: ~$0.50/month (new docs)
-- OpenAI: ~$0.50/month
-- Neon: $0
-- Pinecone: Your existing plan
-- Cloudflare: $0 (free tier covers this)
-- **Total: ~$1/month**
+## Performance
 
-**Savings: 93% vs Azure approach**
+- **Processing**: 3-9 seconds per document
+- **Worker Startup**: 57ms
+- **Database Queries**: <100ms
+- **Bundle Size**: 645 KB compressed
 
----
+## Contributing
 
-## Development Status
-
-- [x] Project structure created
-- [x] Dependencies installed
-- [x] Metadata extraction service (Unstructured + Claude)
-- [x] Database schema (multi-tenant)
-- [x] SecretSpec configuration
-- [ ] Neon service client
-- [ ] Pinecone service client
-- [ ] MCP server implementation
-- [ ] Core MCP tools
-- [ ] Cloudflare deployment
-
----
-
-## Next Steps
-
-1. Run `secretspec check` to verify all keys configured
-2. Create Neon database and run migrations
-3. Continue building MCP tools
-4. Test locally
-5. Deploy to Cloudflare
-
----
+This is a private HOLE Foundation project. For issues or questions, open a GitHub issue.
 
 ## License
 
 Private - HOLE Foundation
+
+---
+
+**Quick Links**:
+- [Setup Guide](docs/PORTABLE_SETUP.md)
+- [Current Status](STATUS.md)
+- [API Examples](docs/API_EXAMPLES.md)
+- [Troubleshooting](docs/PORTABLE_SETUP.md#troubleshooting)
